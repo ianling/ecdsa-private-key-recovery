@@ -3,6 +3,14 @@ Pperform ECDSA and DSA Nonce Reuse private key recovery attacks
 
 ###### This is kind of an improved version of the DSA only variant from https://github.com/tintinweb/DSAregenK
 
+# Setup
+    $ git clone https://github.com/ianling/ecdsa-private-key-recovery.git
+    $ cd ecdsa-private-key-recovery
+    $ pip3 install ./
+
+# Run examples
+    $ pytest tests/ -v -s
+
 
 Let's recover the private-key for two signatures sharing the same `nonce k`. Note how chosing the same `nonce k` results in both signatures having an identical signature value `r`. To find good candidates for an ECDSA nonce reuse check for signatures sharing the same `r`, `pubkey` on `curve` for different messages (or hashes). E.g. blockchain projects based off `bitcoind` are usually good sources of ECDSA signature material.
 
@@ -15,16 +23,7 @@ sampleB = EcDsaSignature(r, sB, hashB, pubkey, curve) # same privkey as sampleA,
 
 # recover the private key
 sampleA.recover_nonce_reuse(sampleB)  # populates sampleA with the recovered private key ready for use
-print sampleA.privkey 
-```
-
-#### setup
-
-```
-#> virtualenv -p python2.7 .env27
-#> . .env27/bin/activate
-(.env27) #> python setup.py install
-(.env27) #> python tests/test_ecdsa_key_recovery.py
+print(sampleA.privkey) 
 ```
 
 #### Recovering Private Keys from the Bitcoin Blockchain

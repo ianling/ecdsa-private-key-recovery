@@ -5,11 +5,10 @@
 EcDSA/DSA Nonce Reuse Private Key Recovery
 """
 
-import Crypto
-from Crypto.PublicKey import DSA
-from Crypto.PublicKey.pubkey import inverse
+from Cryptodome.Util.number import inverse, bytes_to_long
 import Cryptodome.PublicKey.DSA
 import Cryptodome.PublicKey.ECC
+import Cryptodome.Signature.DSS
 
 import ecdsa
 from ecdsa import SigningKey
@@ -18,26 +17,6 @@ from ecdsa.numbertheory import inverse_mod
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-# noinspection PyProtectedMember,PyProtectedMember,PyProtectedMember,PyProtectedMember,PyProtectedMember
-def to_dsakey(secret_key, _from=Crypto.PublicKey.DSA, _to=Cryptodome.PublicKey.DSA):
-    if _from == Cryptodome.PublicKey.DSA:
-        return _to.construct((int(secret_key._key['y']),
-                              int(secret_key._key['g']),
-                              int(secret_key._key['p']),
-                              int(secret_key._key['q']),
-                              int(secret_key._key['x'])))
-    return _to.construct((secret_key.key.y,
-                          secret_key.key.g,
-                          secret_key.key.p,
-                          secret_key.key.q,
-                          secret_key.key.x))
-
-
-def to_ecdsakey(secret_key, _from=ecdsa.SigningKey, _to=Cryptodome.PublicKey.ECC):
-    # pointx, pointy, d
-    return _to.import_key(secret_key.to_der())
 
 
 class SignatureParameter(object):
@@ -90,25 +69,24 @@ class RecoverableSignature(object):
                                                            "✔" if self.x else '⨯')
 
     def _load_signature(self, sig):
-        if all(hasattr(sig, att) for att in ('r','s')):
+        if all(hasattr(sig, att) for att in ('r', 's')):
             return sig
         elif isinstance(sig, tuple):
             return SignatureParameter(*sig)
 
-        raise ValueError("Invalid Signature Format! - Expected tuple(long r,long s) or SignatureParamter(long r, long s)")
+        raise ValueError(
+            "Invalid Signature Format! - Expected tuple(long r,long s) or SignatureParamter(long r, long s)")
 
     def _load_hash(self, h):
-        if isinstance(h, (int, long)):
+        if isinstance(h, int):
             return h
-        elif isinstance(h, basestring):
-            return Crypto.Util.number.bytes_to_long(h)
+        elif isinstance(h, bytes):
+            return bytes_to_long(h)
 
         raise ValueError("Invalid Hash Format! - Expected long(hash) or str(hash)")
 
     def _load_pubkey(self, pubkey):
         raise NotImplementedError("Must be implemented by subclass")
-
-
 
     def recover_nonce_reuse(self, other):
         """
@@ -133,22 +111,13 @@ class DsaSignature(RecoverableSignature):
 
     def __init__(self, sig, h, pubkey):
         super(DsaSignature, self).__init__(sig, h, pubkey)
-        logger.debug("%r - check verifies.." % self)
-        assert self.pubkey.verify(self.h, self.sig.tuple)  # check sig verifies hash
-        logger.debug("%r - Signature is ok" % self)
 
     def _load_pubkey(self, pubkey):
         return pubkey
 
     def export_key(self, *args, **kwargs):
         # format='PEM', pkcs8=None, passphrase=None, protection=None, randfunc=None
-        return to_dsakey(self.privkey, _to=Cryptodome.PublicKey.DSA).exportKey(*args, **kwargs)
-
-    @staticmethod
-    def import_key(*args, **kwargs):
-        # extern_key, passphrase=None
-        key = Cryptodome.PublicKey.DSA.import_key(*args, **kwargs)
-        return to_dsakey(key, _from=Cryptodome.PublicKey.DSA, _to=Crypto.PublicKey.DSA)
+        return self.privkey.exportKey(*args, **kwargs)
 
     @property
     def privkey(self):
@@ -157,11 +126,11 @@ class DsaSignature(RecoverableSignature):
         :return: DSA Private Key Object
         """
         assert self.x  # privkey must be recovered fist
-        return DSA.construct([self.pubkey.y,
-                              self.pubkey.g,
-                              self.pubkey.p,
-                              self.pubkey.q,
-                              self.x])
+        return Cryptodome.PublicKey.DSA.construct((self.pubkey.y,
+                                                   self.pubkey.g,
+                                                   self.pubkey.p,
+                                                   self.pubkey.q,
+                                                   self.x))
 
     def recover_nonce_reuse(self, other):
         assert (self.pubkey.q == other.pubkey.q)
@@ -189,7 +158,7 @@ class EcDsaSignature(RecoverableSignature):
     def _load_pubkey(self, pubkey):
         if isinstance(pubkey, ecdsa.ecdsa.Public_key):
             return pubkey
-        elif isinstance(pubkey, basestring):
+        elif isinstance(pubkey, str):
             return ecdsa.VerifyingKey.from_string(pubkey, curve=self.curve).pubkey
         return pubkey
 
